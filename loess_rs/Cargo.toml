@@ -1,0 +1,18 @@
+[package]
+name = "loess_rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "loess_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rayon = "1.10"
+
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module"]
+
+[dependencies.numpy]
+version = "0.22"
