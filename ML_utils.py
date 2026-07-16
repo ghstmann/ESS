@@ -14,10 +14,22 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print('\033[93mImporting LoessScaler\033[0m')
+print('\033[93Importing fred()\033[0m')
+
+def fred(series_id, start=None, end=None):
+    """Pull a FRED series by ID and return as a Series indexed by date."""
+    import pandas as pd
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    df = pd.read_csv(url, parse_dates=["observation_date"])
+    df = df.set_index("observation_date").iloc[:, 0]
+    df.name = series_id
+    if start: df = df.loc[start:]
+    if end:   df = df.loc[:end]
+    return df
 
 class LoessScaler(BaseEstimator, TransformerMixin):
     """Supervised scaler: smooth nonlinear transform via local linear regression.
-    
+
     Parameters
     ----------
     frac : float, default=0.15
@@ -35,7 +47,7 @@ class LoessScaler(BaseEstimator, TransformerMixin):
         self.bw_floor_frac = bw_floor_frac
         self.n_grid = n_grid
         self.clip_quantiles = clip_quantiles
-    
+
     def fit(self, X, y):
         from scipy.interpolate import CubicSpline
         X = np.asarray(X, dtype=float); y = np.asarray(y, dtype=float)
@@ -54,7 +66,7 @@ class LoessScaler(BaseEstimator, TransformerMixin):
             self.splines_.append(CubicSpline(x_grid, p_grid))
         self.n_features_in_ = X.shape[1]
         return self
-    
+
     def transform(self, X):
         X = np.asarray(X, dtype=float)
         if X.ndim == 1: X = X.reshape(-1, 1)
@@ -63,10 +75,10 @@ class LoessScaler(BaseEstimator, TransformerMixin):
             mask = ~np.isnan(X[:, j]); xj = np.clip(X[mask, j], lo, hi)
             Xt[mask, j] = np.clip(spl(xj), 0, 1); Xt[~mask, j] = np.nan
         return Xt
-    
+
     def plot(self, X, y, col_names=None, n_bins=30, lower_pct=1, upper_pct=99):
         """Plot LOESS fit vs empirical binned default rates for each column.
-        
+
         Parameters
         ----------
         X, y : array-like
@@ -84,12 +96,12 @@ class LoessScaler(BaseEstimator, TransformerMixin):
         n_cols = X.shape[1]
         if col_names is None:
             col_names = [f'Feature {j}' for j in range(n_cols)]
-        
+
         for j in range(n_cols):
             lo, hi = self.ranges_[j]
             spl = self.splines_[j]
             col = col_names[j]
-            
+
             # Trim percentile tails; clip survivors to the spline's domain
             x_orig = X[:, j]
             p_low, p_high = np.percentile(x_orig, [lower_pct, upper_pct])
@@ -97,16 +109,16 @@ class LoessScaler(BaseEstimator, TransformerMixin):
             x_raw  = np.clip(x_orig[keep], lo, hi)
             y_use  = y[keep]
             n_drop = len(x_orig) - len(x_raw)
-            
+
             # LOESS curve over the kept range
             x_plot = np.linspace(p_low, p_high, 1000)
             p_plot = np.clip(spl(x_plot), 0, 1)
-            
+
             # Equal-count bins on kept data
             bin_edges = np.unique(np.percentile(x_raw, np.linspace(0, 100, n_bins + 1)))
             nb = len(bin_edges) - 1
             bin_idx = np.clip(np.digitize(x_raw, bin_edges) - 1, 0, nb - 1)
-            
+
             mids, rates, counts, ci_lo, ci_hi = [], [], [], [], []
             for b in range(nb):
                 m = bin_idx == b; n_b = m.sum()
@@ -118,7 +130,7 @@ class LoessScaler(BaseEstimator, TransformerMixin):
                     ci_hi.append(r + 1.96 * se)
             mids, rates, counts = np.array(mids), np.array(rates), np.array(counts)
             ci_lo, ci_hi = np.array(ci_lo), np.array(ci_hi)
-            
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=np.concatenate([mids, mids[::-1]]),
@@ -135,7 +147,7 @@ class LoessScaler(BaseEstimator, TransformerMixin):
                 x=x_plot, y=p_plot, mode='lines',
                 line=dict(color='firebrick', width=1.5), name='LOESS',
                 hovertemplate='x=%{x:.3f}<br>PD=%{y:.4f}<extra></extra>'))
-            
+
             fig.update_layout(
                 title='LOESS vs Empirical Default Rates',
                 yaxis_title='Probability of Default (PD)', xaxis_title=col,
@@ -143,7 +155,7 @@ class LoessScaler(BaseEstimator, TransformerMixin):
                 legend=dict(font=dict(size=10), orientation='h',
                             yanchor='bottom', y=1.02, xanchor='left', x=0))
             fig.show()
-            
+
             # Diagnostics
             p_at_mids = np.clip(spl(mids), 0, 1)
             outside = (p_at_mids < ci_lo) | (p_at_mids > ci_hi)
@@ -153,13 +165,13 @@ class LoessScaler(BaseEstimator, TransformerMixin):
             print(f"  LOESS outside 95% CI: {outside.sum()} of {len(mids)} bins\n")
 
 print('\033[93mImporting Loess2DScaler\n\033[0m')
-        
+
 class Loess2DScaler(BaseEstimator, TransformerMixin):
     """Supervised scaler: 2D LOESS surface mapping (x1, x2) → P(default).
-    
+
     Takes exactly 2 input columns. Returns 1 column: the smoothed
     joint P(default) from the 2D surface.
-    
+
     Parameters
     ----------
     frac : float, default=0.10
@@ -177,33 +189,33 @@ class Loess2DScaler(BaseEstimator, TransformerMixin):
         self.bw_floor_frac = bw_floor_frac
         self.n_grid = n_grid
         self.clip_quantiles = clip_quantiles
-    
+
     def fit(self, X, y):
         from scipy.interpolate import RegularGridInterpolator
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float)
         if X.shape[1] != 2:
             raise ValueError(f"Loess2DScaler expects 2 columns, got {X.shape[1]}")
-        
+
         lo1 = np.percentile(X[:, 0], self.clip_quantiles[0] * 100)
         hi1 = np.percentile(X[:, 0], self.clip_quantiles[1] * 100)
         lo2 = np.percentile(X[:, 1], self.clip_quantiles[0] * 100)
         hi2 = np.percentile(X[:, 1], self.clip_quantiles[1] * 100)
         self.ranges_ = [(lo1, hi1), (lo2, hi2)]
-        
+
         keep = (X[:, 0] >= lo1) & (X[:, 0] <= hi1) & (X[:, 1] >= lo2) & (X[:, 1] <= hi2)
         x1, x2, yc = X[keep, 0], X[keep, 1], y[keep]
-        
+
         self.std_ = np.array([x1.std(), x2.std()])
         self.std_[self.std_ == 0] = 1.0
-        
+
         g1 = np.linspace(lo1, hi1, self.n_grid)
         g2 = np.linspace(lo2, hi2, self.n_grid)
         self.grid_axes_ = (g2, g1)
-        
+
         range_s = np.sqrt((hi1-lo1)**2/self.std_[0]**2 + (hi2-lo2)**2/self.std_[1]**2)
         bw_floor = self.bw_floor_frac * range_s if self.bw_floor_frac else None
-        
+
         p_surface = loess_rs.loess_2d_on_grid(
             x1, x2, yc, g1, g2,
             self.std_[0], self.std_[1],
@@ -214,7 +226,7 @@ class Loess2DScaler(BaseEstimator, TransformerMixin):
             self.grid_axes_, P, method='linear', bounds_error=False, fill_value=None)
         self.n_features_in_ = 2
         return self
-    
+
     def transform(self, X):
         X = np.asarray(X, dtype=float)
         x1 = np.clip(X[:, 0], self.ranges_[0][0], self.ranges_[0][1])
