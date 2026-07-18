@@ -7,11 +7,13 @@ import plotly.graph_objects as go
 import sys
 import os
 plt.style.use('fivethirtyeight')
-sys.path.append('/Users/ghost/Desktop/Credit/code')
 
 from pathlib import Path
-code_path = Path('/', 'Users', 'ghost', 'Desktop', 'Credit', 'code')
-data_path = Path('/', 'Users', 'ghost', 'Desktop', 'Credit', 'data')
+# Paths resolve to THIS file's folder (your repo checkout), so the code and data
+# are found wherever the repo lives — no hardcoded /Users/ghost path.
+code_path = Path(__file__).resolve().parent
+data_path = Path(__file__).resolve().parent
+sys.path.append(str(code_path))
 
 print('\033[93mImporting pandas as pd, numpy as np, datetime as dt\033[0m')
 print('\033[93mImporting matplotlib.pyplot as plt, plotly.graph_objects as go\033[0m')
